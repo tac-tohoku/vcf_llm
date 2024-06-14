@@ -2,9 +2,10 @@ import pandas as pd
 import pysam
 import os
 import openai
-from llama_index.core import VectorStoreIndex
 
-# OpenAI APIキーを設定します
+from llama_index.core import VectorStoreIndex, Document
+
+# OpenAI APIキーを設定
 openai.api_key = os.environ["OPENAI_API_KEY"]
 
 # 論文データ読み込み
@@ -55,7 +56,6 @@ vcf_pick = pd.merge(vcf_table, snp_list, on="ID")
 
 # 各SNPに対応するテキストファイルの内容を格納するリスト
 snp_texts = []
-
 for index, row in vcf_pick.iterrows():
     snp_id = row['ID']
     print(f"Processing SNP: {snp_id}")
@@ -68,24 +68,27 @@ for index, row in vcf_pick.iterrows():
         snp_texts.append({'snp_id': snp_id, 'content': 'No text file found'})
 
 #インデックス化して、GPTに読み込ませるデータを軽量化する。（API利用料節約を目的に）
-index = VectorStoreIndex.from_documents(snp_texts)
+documents = [Document(text=snp_text['content'], doc_id=snp_text['snp_id']) for snp_text in snp_texts if snp_text['content'] != 'No text file found']
+
+# VectorStoreIndexを作成
+index = VectorStoreIndex.from_documents(documents)
 
 # OpenAIを使用して要約を生成する関数
 query_engine = index.as_query_engine()
-response = query_engine.query("Please summarize the following text")
-print(response)
 
-# 要約結果を格納するリスト
-#summarized_texts = []
-
-#for snp_text in snp_texts:
-#    if snp_text['content'] != 'No text file found':
-#        summary = summarize_text(snp_text['content'])
-#        summarized_texts.append({'snp_id': snp_text['snp_id'], 'summary': summary})
-#    else:
-#        summarized_texts.append({'snp_id': snp_text['snp_id'], 'summary': 'No text file found'})
+summarized_texts = []
+for snp_text in snp_texts:
+    if snp_text['content'] != 'No text file found':
+        response = query_engine.query(f"Please summarize the following text :\n\n{snp_text['content']}")
+        summary = response.response  # ここでresponseオブジェクトの正しい属性にアクセスします
+        summarized_texts.append({'snp_id': snp_text['snp_id'], 'summary': summary})
+    else:
+        summarized_texts.append({'snp_id': snp_text['snp_id'], 'summary': 'No text file found'})
 
 # 結果を表示
+for summary in summarized_texts:
+    print(f"SNP ID: {summary['snp_id']}")
+    print(f"Summary: {summary['summary']}\n")
 #for summary in summarized_texts:
 #    print(f"SNP ID: {summary['snp_id']}")
 #    print(f"Summary: {summary['summary']}\n")
